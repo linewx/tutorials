@@ -1,10 +1,6 @@
 package com.baeldung.instrumentation.agent;
 
-import javassist.CannotCompileException;
-import javassist.ClassPool;
-import javassist.CtClass;
-import javassist.CtMethod;
-import javassist.NotFoundException;
+import javassist.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,10 +20,21 @@ public class AtmTransformer implements ClassFileTransformer {
     /** The class loader of the class we want to transform */
     private ClassLoader targetClassLoader;
 
+    private String logName;
+
     public AtmTransformer(String targetClassName, ClassLoader targetClassLoader) {
         this.targetClassName = targetClassName;
         this.targetClassLoader = targetClassLoader;
+        this.logName = "LOGGER";
     }
+
+    public AtmTransformer(String targetClassName, ClassLoader targetClassLoader, String logName) {
+        this.targetClassName = targetClassName;
+        this.targetClassLoader = targetClassLoader;
+        this.logName = logName;
+    }
+
+
 
     @Override
     public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
@@ -40,24 +47,20 @@ public class AtmTransformer implements ClassFileTransformer {
         }
 
         if (className.equals(finalTargetClassName) && loader.equals(targetClassLoader)) {
-            LOGGER.info("[Agent] Transforming class MyAtm");
+            LOGGER.info("[Agent] Transforming class MyAtm  ############");
             try {
                 ClassPool cp = ClassPool.getDefault();
+                cp.appendClassPath(new LoaderClassPath(Thread.currentThread().getContextClassLoader()));
+                cp.appendClassPath(new LoaderClassPath(loader));
+                ClassClassPath ccpath = new ClassClassPath(this.getClass());
+                cp.insertClassPath(ccpath);
                 CtClass cc = cp.get(targetClassName);
-                CtMethod m = cc.getDeclaredMethod(WITHDRAW_MONEY_METHOD);
-                m.addLocalVariable("startTime", CtClass.longType);
-                m.insertBefore("startTime = System.currentTimeMillis();");
-
-                StringBuilder endBlock = new StringBuilder();
-
-                m.addLocalVariable("endTime", CtClass.longType);
-                m.addLocalVariable("opTime", CtClass.longType);
-                endBlock.append("endTime = System.currentTimeMillis();");
-                endBlock.append("opTime = (endTime-startTime)/1000;");
-
-                endBlock.append("LOGGER.info(\"[Application] Withdrawal operation completed in:\" + opTime + \" seconds!\");");
-
-                m.insertAfter(endBlock.toString());
+//                CtMethod m = cc.getDeclaredMethod("processQuery");
+                CtMethod[] methods = cc.getDeclaredMethods();
+                for (CtMethod oneMethod : methods) {
+                    oneMethod.insertBefore(this.logName + ".info(\"[agent instrument] enter\");");
+                    oneMethod.insertAfter(this.logName + ".info(\"[agent instrument]  exit\");");
+                }
 
                 byteCode = cc.toBytecode();
                 cc.detach();
